@@ -59,6 +59,14 @@
 #define ELF_ST_TYPE(x)  ELF64_ST_TYPE(x)
 #endif
 
+/*
+ * SHARED_TIMEOUT is used by find_or_prepare_shared_file for when it
+ * should timeout while waiting for other users to finish preparing
+ * the file it wants.  The value is the number of tries before giving
+ * up with a 1 second wait between tries
+ */
+#define SHARED_TIMEOUT 10
+
 /* This function prints an error message to stderr, then aborts.  It
  * is safe to call, even if the executable segments are presently
  * unmapped.
@@ -836,6 +844,7 @@ static int prepare_segment(struct seg_info *seg)
 	unsigned long size, offset;
 	long page_size = getpagesize();
 	long hpage_size;
+	int mmap_reserve = __hugetlb_opts.no_reserve ? MAP_NORESERVE : 0;
 
 	hpage_size = seg->page_size;
 
@@ -869,7 +878,8 @@ static int prepare_segment(struct seg_info *seg)
 		check_range_empty(end, new_end - end);
 
 	/* Create the temporary huge page mmap */
-	p = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, seg->fd, 0);
+	p = mmap(NULL, size, PROT_READ|PROT_WRITE,
+				MAP_SHARED|mmap_reserve, seg->fd, 0);
 	if (p == MAP_FAILED) {
 		WARNING("Couldn't map hugepage segment to copy data: %s\n",
 			strerror(errno));
@@ -969,9 +979,10 @@ static int fork_and_prepare_segment(struct seg_info *htlb_seg_info)
  */
 static int find_or_prepare_shared_file(struct seg_info *htlb_seg_info)
 {
-	int fdx, fds;
+	int fdx = -1, fds;
 	int errnox, errnos;
 	int ret;
+	int i;
 	char final_path[PATH_MAX+1];
 	char tmp_path[PATH_MAX+1];
 
@@ -980,7 +991,7 @@ static int find_or_prepare_shared_file(struct seg_info *htlb_seg_info)
 		return -1;
 	assemble_path(tmp_path, "%s.tmp", final_path);
 
-	do {
+	for (i = 0; i < SHARED_TIMEOUT; i++) {
 		/* NB: mode is modified by umask */
 		fdx = open(tmp_path, O_CREAT | O_EXCL | O_RDWR, 0666);
 		errnox = errno;
@@ -1036,8 +1047,7 @@ static int find_or_prepare_shared_file(struct seg_info *htlb_seg_info)
 		/* Both opens failed, somebody else is still preparing */
 		/* Wait and try again */
 		sleep(1);
-		/* FIXME: should have a timeout */
-	} while (1);
+	}
 
  fail:
 	if (fdx > 0) {
@@ -1122,6 +1132,10 @@ static void remap_segments(struct seg_info *seg, int num)
 		offset = (unsigned long)(seg[i].vaddr - start);
 		mapsize = ALIGN(offset + seg[i].memsz, hpage_size);
 		mmap_flags = MAP_PRIVATE|MAP_FIXED;
+
+		/* If requested, make no reservations */
+		if (__hugetlb_opts.no_reserve)
+			mmap_flags |= MAP_NORESERVE;
 
 		/*
 		 * If this is a read-only mapping whose contents are
@@ -1217,7 +1231,7 @@ static int check_env(void)
 					"remapping for non-relinked "
 					"binaries\n");
 			INFO("Disabling filesz copy optimization\n");
-			__hugetlb_opts.min_copy = 0;
+			__hugetlb_opts.min_copy = false;
 		} else {
 			if (&__executable_start) {
 				WARNING("LD_PRELOAD is incompatible with "
@@ -1243,6 +1257,10 @@ static int check_env(void)
 			__hugetlb_opts.sharing = 0;
 		}
 	}
+
+	INFO("HUGETLB_NO_RESERVE=%s, reservations %s\n",
+			__hugetlb_opts.no_reserve ? "yes" : "no",
+			__hugetlb_opts.no_reserve ? "disabled" : "enabled");
 
 	return 0;
 }

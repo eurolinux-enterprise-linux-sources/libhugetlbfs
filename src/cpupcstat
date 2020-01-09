@@ -18,6 +18,7 @@ my $vmlinux;
 my $target;
 my $real_target;
 my $target_pid;
+my $target_global;
 my $misses;
 my $instructions = 0;
 my $cycles = 0;
@@ -37,7 +38,17 @@ my $collector;
 my $miss_scale = 0;
 my $ins_scale = 0;
 my $cyc_scale = 0;
-my $tlbcost_cache = "$Bin/tlbmisscost";
+
+sub calc_tlbmiss_cost()
+{
+	my $cost_script = `which tlbmiss_cost.sh`;
+	if ($cost_script eq "") {
+		$cost_script = "$Bin/contrib/tlbmiss_cost.sh";
+	}
+	my $data = `$cost_script --vmlinux $vmlinux`;
+	($data,$cost_in_cycles) = split(/\=/, $data);
+	chomp($cost_in_cycles);
+}
 
 sub start_target()
 {
@@ -105,6 +116,9 @@ sub run_profile()
 			$binName = $results[0];
 		}
 		$pid = start_target();
+	} elsif (defined $target_global) {
+		$binName='/';
+		$pid = $$;
 	}
 
 	$binName = `basename $binName`;
@@ -117,8 +131,11 @@ sub run_profile()
 	if ($instruct_ratio) {
 		printf("%24s\n", "Instructions/TLB Miss\n");
 		$ins_scale = $collector->samples("instructions");
-	} elsif ($cycle_ratio || $service) {
+	} elsif ($cycle_ratio) {
 		printf("%24s\n", "Cycles/TLB Miss\n");
+		$cyc_scale = $collector->samples("timer");
+	} elsif ($service) {
+		printf("%24s\n", "TLB Miss %age Time\n");
 		$cyc_scale = $collector->samples("timer");
 	} else {
 		print("\n");
@@ -158,6 +175,17 @@ sub run_profile()
 				printf("%24f\n",
 				($cyc_new * $cyc_scale) / ($new * $miss_scale));
 			}
+			$cyc_prev = $ret;
+		} elsif ($service) {
+
+			$ret = $collector->get_current_eventcount($binName,
+				"timer");
+			$cyc_new = $ret - $cyc_prev;
+			my $miss_cycles = $new * $cost_in_cycles * $miss_scale;
+			my $total_cycles = $cyc_new * $cyc_scale;
+
+			printf "%24.4f%%\n", $miss_cycles * 100/$total_cycles;
+
 			$cyc_prev = $ret;
 		} else {
 			print("\n");
@@ -206,12 +234,15 @@ sub print_usage()
 	--vmlinux /path/to/vmlinux Sets the vmlinux file to use
 	--delay N                  Waits N seconds before rereading the
                                    miss rate
+	--target-global            Watch the miss rate of all processes
 	--target-pid P             Watch the miss rate of P instead of a target
 	--real-target T            Watch T instead of target in case target is
                                    a launcher script
 	--time-limit L             Sets a time limit for watching the target
 	--kernel                   Output DTLB miss data for the kernel as well
                                    as the specified target
+	--time-servicing           Print the percentage of time servicing TLB
+                                   misses
 	--misses-per-instruction   Prints the ratio of TLB misses per
                                    instruction retired
 	--misses-per-cycle         Prints the ratio of TLB misses per CPU cycle
@@ -236,6 +267,7 @@ Getopt::Long::Configure ('bundling');
 GetOptions ('v|vmlinux=s' => \$vmlinux,
 	    'h|help' => \&print_usage,
 	    'd|delay=i' => \$wait_time,
+	    'g|target-global' => \$target_global,
 	    'p|target-pid=i' => \$target_pid,
 	    'r|real-target=s' => \$real_target,
 	    'l|time-limit=i' => \$time_limit,
@@ -248,7 +280,7 @@ GetOptions ('v|vmlinux=s' => \$vmlinux,
 	    's|persist' => \$persist,
 	    '<>' => \&get_target);
 
-if (!$target && not defined $target_pid) {
+if (!$target && !$target_global && not defined $target_pid) {
 	print_usage();
 }
 
@@ -259,6 +291,10 @@ if (!$vmlinux) {
 chomp($vmlinux);
 if ($target) {
 	chomp($target);
+}
+
+if ($service) {
+	calc_tlbmiss_cost();
 }
 
 $misses = 0;
@@ -283,28 +319,8 @@ if ($misses > 0) {
 	}
 
 	if ($service && $cycles > 0) {
-		if ( !$config && -e $tlbcost_cache ) {
-			$config = $tlbcost_cache;
-		}
-		if ($config) {
-			open(DAT, $config) || die "Failed to open $config\n";
-			my $data = <DAT>;
-			close(DAT);
-			($data,$cost_in_cycles) = split(/\=/, $data);
-			chomp($cost_in_cycles);
-		}
-
 		if ($cost_in_cycles <= 0) {
-			my $cost_script = `which tlbmiss_cost.sh`;
-			if ($cost_script eq "") {
-				$cost_script = "$Bin/contrib/tlbmiss_cost.sh";
-			}
-			my $data = `$cost_script --vmlinux $vmlinux`;
-			($data,$cost_in_cycles) = split(/\=/, $data);
-			chomp($cost_in_cycles);
-			open (DAT, ">$tlbcost_cache");
-			print DAT "TLB_MISS_COST=$cost_in_cycles";
-			close (DAT);
+			calc_tlbmiss_cost();
 		}
 		my $total_cost = $cost_in_cycles * $misses;
 		print("$target spent ",

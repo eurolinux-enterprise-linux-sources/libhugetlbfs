@@ -1,0 +1,30 @@
+diff -up libhugetlbfs-2.12/Makefile.s390x-build libhugetlbfs-2.12/Makefile
+--- libhugetlbfs-2.12/Makefile.s390x-build	2011-04-01 22:39:44.000000000 +0200
++++ libhugetlbfs-2.12/Makefile	2011-08-05 09:23:24.000000000 +0200
+@@ -75,10 +75,17 @@ CFLAGS += -DNO_ELFLINK
+ else
+ ifeq ($(ARCH),s390x)
+ CC64 = gcc -m64
+-CC32 = gcc -m31
+ TMPLIB64 = lib64
+ TMPLIB32 = lib
+ CFLAGS += -DNO_ELFLINK
++ifneq ($(BUILDTYPE),NATIVEONLY)
++CC32 = gcc -m31
++endif
++else
++ifeq ($(ARCH),s390)
++CC32 = gcc -m31
++TMPLIB32 = lib
++CFLAGS += -DNO_ELFLINK
+ else
+ $(error "Unrecognized architecture ($(ARCH))")
+ endif
+@@ -88,6 +95,7 @@ endif
+ endif
+ endif
+ endif
++endif
+ 
+ ifdef CC32
+ OBJDIRS += obj32

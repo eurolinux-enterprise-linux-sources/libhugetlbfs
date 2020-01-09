@@ -45,6 +45,7 @@ void check_must_be_root(void);
 void check_hugetlb_shm_group(void);
 void test_init(int argc, char *argv[]);
 int test_addr_huge(void *p);
+unsigned long long get_mapping_page_size(void *p);
 long read_meminfo(const char *tag);
 ino_t get_addr_inode(void *p);
 
@@ -121,8 +122,8 @@ extern long gethugepagesize (void) __attribute__ ((weak));
 
 static inline long check_hugepagesize()
 {
-	long hpage_size = gethugepagesize();
-	if (hpage_size < 0) {
+	long __hpage_size = gethugepagesize();
+	if (__hpage_size < 0) {
 		if (errno == ENOSYS)
 			CONFIG("No hugepage kernel support\n");
 		else if (errno == EOVERFLOW)
@@ -130,7 +131,7 @@ static inline long check_hugepagesize()
 		else
 			CONFIG("Hugepage size (%s)", strerror(errno));
 	}
-	return hpage_size;
+	return __hpage_size;
 }
 
 int using_system_hpage_size(const char *mount);

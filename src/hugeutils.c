@@ -146,6 +146,10 @@ static struct hugetlb_pool_counter_info_t hugetlb_counter_info[] = {
 		.meminfo_key	= "HugePages_Total:",
 		.sysfs_file	= "nr_hugepages",
 	},
+	[HUGEPAGES_TOTAL_MEMPOL] = {
+		.meminfo_key	= "HugePages_Total:",
+		.sysfs_file	= "nr_hugepages_mempolicy",
+	},
 	[HUGEPAGES_FREE] = {
 		.meminfo_key	= "HugePages_Free:",
 		.sysfs_file	= "free_hugepages",
@@ -229,6 +233,52 @@ int file_write_ulong(char *file, unsigned long val)
 	return ret > 0 ? 0 : -1;
 }
 
+
+/*
+ * Return the name of this executable, using buf as temporary space.
+ */
+#define MAX_EXE 4096
+static char *get_exe_name(char *buf, int size)
+{
+	char *p;
+	int fd;
+	ssize_t nread;
+
+	buf[0] = 0;
+	fd = open("/proc/self/cmdline", O_RDONLY);
+	if (fd < 0) {
+		WARNING("Unable to open cmdline, no exe name\n");
+		return buf;
+	}
+	nread = read(fd, buf, size-1);
+	close(fd);
+
+	if (nread < 0) {
+		WARNING("Error %d reading cmdline, no exe name\n", errno);
+		return buf;
+	}
+	if (nread == 0) {
+		WARNING("Read zero bytes from cmdline, no exe name\n");
+		return buf;
+	}
+
+	buf[nread] = 0; /* make sure we're null terminated */
+	/*
+	 * Take advantage of cmdline being a series of null-terminated
+	 * strings.  The first string is the path to the executable in
+	 * the form:
+	 *
+	 *      /path/to/exe
+	 *
+	 * The exe name starts one character after the last '/'.
+	 */
+	p = strrchr(buf, '/');
+	if (!p)
+		return buf;
+	return p + 1;           /* skip over "/" */
+}
+
+
 /*
  * Reads the contents of hugetlb environment variables and save their
  * values for later use.
@@ -237,7 +287,7 @@ void hugetlbfs_setup_env()
 {
 	char *env;
 
-	__hugetlb_opts.min_copy = 1;
+	__hugetlb_opts.min_copy = true;
 
 	env = getenv("HUGETLB_VERBOSE");
 	if (env)
@@ -245,13 +295,36 @@ void hugetlbfs_setup_env()
 
 	env = getenv("HUGETLB_DEBUG");
 	if (env) {
-		__hugetlbfs_debug = 1;
+		__hugetlbfs_debug = true;
 		__hugetlbfs_verbose = VERBOSE_DEBUG;
+	}
+
+	env = getenv("HUGETLB_RESTRICT_EXE");
+	if (env) {
+		char *p, *tok, *exe, buf[MAX_EXE+1], restrict[MAX_EXE];
+		int found = 0;
+
+		exe = get_exe_name(buf, sizeof buf);
+		DEBUG("Found HUGETLB_RESTRICT_EXE, this exe is \"%s\"\n", exe);
+		strncpy(restrict, env, sizeof restrict);
+		restrict[sizeof(restrict)-1] = 0;
+		for (p = restrict; (tok = strtok(p, ":")) != NULL; p = NULL) {
+			DEBUG("  ...check exe match for \"%s\"\n",  tok);
+			if (strcmp(tok, exe) == 0) {
+				found = 1;
+				DEBUG("exe match - libhugetlbfs is active for this exe\n");
+				break;
+			}
+		}
+		if (!found) {
+			DEBUG("No exe match - libhugetlbfs is inactive for this exe\n");
+			return;
+		}
 	}
 
 	env = getenv("HUGETLB_NO_PREFAULT");
 	if (env)
-		__hugetlbfs_prefault = 0;
+		__hugetlbfs_prefault = false;
 
 	__hugetlb_opts.share_path = getenv("HUGETLB_SHARE_PATH");
 	__hugetlb_opts.elfmap = getenv("HUGETLB_ELFMAP");
@@ -270,7 +343,7 @@ void hugetlbfs_setup_env()
 	if (__hugetlb_opts.min_copy && env && (strcasecmp(env, "no") == 0)) {
 		INFO("HUGETLB_MINIMAL_COPY=%s, disabling filesz copy "
 			"optimization\n", env);
-		__hugetlb_opts.min_copy = 0;
+		__hugetlb_opts.min_copy = false;
 	}
 
 	env = getenv("HUGETLB_SHARE");
@@ -294,12 +367,32 @@ void hugetlbfs_setup_env()
 	 */
 	env = getenv("HUGETLB_MORECORE_SHRINK");
 	if (env && strcasecmp(env, "yes") == 0)
-		__hugetlb_opts.shrink_ok = 1;
+		__hugetlb_opts.shrink_ok = true;
 
 	/* Determine if shmget() calls should be overridden */
 	env = getenv("HUGETLB_SHM");
 	if (env && !strcmp(env, "yes"))
-		__hugetlb_opts.shm_enabled = 1;
+		__hugetlb_opts.shm_enabled = true;
+
+	/* Determine if all reservations should be avoided */
+	env = getenv("HUGETLB_NO_RESERVE");
+	if (env && !strcmp(env, "yes"))
+		__hugetlb_opts.no_reserve = true;
+}
+
+void hugetlbfs_setup_kernel_page_size()
+{
+	long page_size = kernel_default_hugepage_size();
+
+	if (page_size <= 0) {
+		WARNING("Unable to find default kernel huge page size\n");
+		return;
+	}
+
+	INFO("Found pagesize %ld kB\n", page_size / 1024);
+	hpage_sizes[0].pagesize = page_size;
+
+	nr_hpage_sizes = 1;
 }
 
 void hugetlbfs_check_priv_resv()
@@ -309,11 +402,47 @@ void hugetlbfs_check_priv_resv()
 	 * prefaulting the huge pages we allocate since the kernel
 	 * guarantees them.  This can help NUMA performance quite a bit.
 	 */
-	if (hugetlbfs_test_feature(HUGETLB_FEATURE_PRIVATE_RESV)) {
+	if (hugetlbfs_test_feature(HUGETLB_FEATURE_PRIVATE_RESV) > 0) {
 		INFO("Kernel has MAP_PRIVATE reservations.  Disabling "
 			"heap prefaulting.\n");
-		__hugetlbfs_prefault = 0;
+		__hugetlbfs_prefault = false;
 	}
+}
+
+void hugetlbfs_check_safe_noreserve()
+{
+	/*
+	 * Some kernels will trigger an OOM if MAP_NORESERVE is used and
+	 * a huge page allocation fails. This is unfortunate so limit
+	 * the user of NORESERVE where necessary
+	 */
+	if (__hugetlb_opts.no_reserve &&
+		hugetlbfs_test_feature(HUGETLB_FEATURE_SAFE_NORESERVE) <= 0) {
+		INFO("Kernel is not safe for MAP_NORESERVE. Forcing "
+			"use of reservations.\n");
+		__hugetlb_opts.no_reserve = false;
+	}
+}
+
+void hugetlbfs_check_map_hugetlb()
+{
+/*
+ * FIXME: MAP_HUGETLB has not been picked up by glibc so even though the
+ * kernel may support it, without the userspace mmap flag it cannot be
+ * used.  This ifdef should be removed when the MAP_HUGETLB flag makes it
+ * into glibc.
+ */
+#ifdef MAP_HUGETLB
+	/*
+	 * Kernels after 2.6.32 support mmaping pseudo-anonymous regions
+	 * backed by huge pages, use this feature for huge pages we
+	 * don't intend to share.
+	 */
+	if (hugetlbfs_test_feature(HUGETLB_FEATURE_MAP_HUGETLB) > 0) {
+		INFO("Kernel supports MAP_HUGETLB\n");
+		__hugetlb_opts.map_hugetlb = true;
+	}
+#endif
 }
 
 /*
@@ -375,7 +504,7 @@ static int hpage_size_to_index(unsigned long size)
 	return -1;
 }
 
-static void probe_default_hpage_size(void)
+void probe_default_hpage_size(void)
 {
 	long size;
 	int index;
@@ -411,7 +540,8 @@ static void probe_default_hpage_size(void)
 			 * is purely informational in nature.
 			 */
 			char msg[] = "No mount point found for default huge " \
-				"page size. Using first available mount point.";
+				"page size. Using first available mount "
+				"point.\n";
 			if (default_overrided)
 				WARNING("%s", msg);
 			else
@@ -465,7 +595,7 @@ static void add_hugetlbfs_mount(char *path, int user_mount)
 	strcpy(hpage_sizes[idx].mount, path);
 }
 
-static void debug_show_page_sizes(void)
+void debug_show_page_sizes(void)
 {
 	int i;
 
@@ -484,7 +614,7 @@ static void find_mounts(void)
 	char path[PATH_MAX+1];
 	char line[LINE_MAXLEN + 1];
 	char *eol;
-	int bytes, err;
+	int bytes, err, dummy;
 	off_t offset;
 
 	fd = open("/proc/mounts", O_RDONLY);
@@ -513,9 +643,16 @@ static void find_mounts(void)
 		offset = bytes - (eol + 1 - line);
 		lseek(fd, -offset, SEEK_CUR);
 
-		err = sscanf(line, "%*s %" stringify(PATH_MAX) "s hugetlbfs ",
-			path);
-		if ((err == 1) && (hugetlbfs_test_path(path) == 1))
+		/*
+		 * Match only hugetlbfs filesystems.
+		 * Subtle: sscanf returns the number of input items matched
+		 * and assigned.  To force sscanf to match the literal
+		 * "hugetlbfs" string we include a 'dummy' input item
+		 * following that string.
+		 */
+		err = sscanf(line, "%*s %" stringify(PATH_MAX) "s hugetlbfs "
+			"%*s %d", path, &dummy);
+		if ((err == 2) && (hugetlbfs_test_path(path) == 1))
 			add_hugetlbfs_mount(path, 0);
 	}
 	close(fd);
@@ -548,10 +685,6 @@ void setup_mounts(void)
 	/* Then probe all mounted filesystems */
 	if (do_scan)
 		find_mounts();
-
-	probe_default_hpage_size();
-	if (__hugetlbfs_debug)
-		debug_show_page_sizes();
 }
 
 int get_pool_size(long size, struct hpage_pool *pool)
@@ -891,8 +1024,17 @@ int hugetlbfs_unlinked_fd(void)
 }
 
 #define IOV_LEN 64
-int hugetlbfs_prefault(int fd, void *addr, size_t length)
+int hugetlbfs_prefault(void *addr, size_t length)
 {
+	size_t offset;
+	struct iovec iov[IOV_LEN];
+	int ret;
+	int i;
+	int fd;
+
+	if (!__hugetlbfs_prefault)
+		return 0;
+
 	/*
 	 * The NUMA users of libhugetlbfs' malloc feature are
 	 * expected to use the numactl program to specify an
@@ -909,30 +1051,32 @@ int hugetlbfs_prefault(int fd, void *addr, size_t length)
 	 * -ENOMEM is returned. The caller is expected to release the entire
 	 * mapping and optionally it may recover by mapping base pages instead.
 	 */
-	if (__hugetlbfs_prefault) {
-		int i;
-		size_t offset;
-		struct iovec iov[IOV_LEN];
-		int ret;
 
-		for (offset = 0; offset < length; ) {
-			for (i = 0; i < IOV_LEN && offset < length; i++) {
-				iov[i].iov_base = addr + offset;
-				iov[i].iov_len = 1;
-				offset += gethugepagesize();
-			}
-			ret = readv(fd, iov, i);
-			if (ret != i) {
-				DEBUG("Got %d of %d requested; err=%d\n", ret,
-						i, ret < 0 ? errno : 0);
-				WARNING("Failed to reserve %ld huge pages "
-						"for new region\n",
-						length / gethugepagesize());
-				return -ENOMEM;
-			}
+	fd = open("/dev/zero", O_RDONLY);
+	if (fd < 0) {
+		ERROR("Failed to open /dev/zero for reading\n");
+		return -ENOMEM;
+	}
+
+	for (offset = 0; offset < length; ) {
+		for (i = 0; i < IOV_LEN && offset < length; i++) {
+			iov[i].iov_base = addr + offset;
+			iov[i].iov_len = 1;
+			offset += gethugepagesize();
+		}
+		ret = readv(fd, iov, i);
+		if (ret != i) {
+			DEBUG("Got %d of %d requested; err=%d\n", ret,
+					i, ret < 0 ? errno : 0);
+			WARNING("Failed to reserve %ld huge pages "
+					"for new region\n",
+					length / gethugepagesize());
+			close(fd);
+			return -ENOMEM;
 		}
 	}
 
+	close(fd);
 	return 0;
 }
 

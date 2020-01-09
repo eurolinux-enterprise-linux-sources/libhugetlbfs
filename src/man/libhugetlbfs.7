@@ -102,6 +102,37 @@ large enough to contain at least one hugepage for the remapping to occur.
 The following options affect how libhugetlbfs behaves.
 
 .TP
+.B HUGETLB_RESTRICT_EXE=e1:e2:...:eN
+By default, libhugetlbfs will act on any program that it
+is loaded with, either via LD_PRELOAD or by explicitly
+linking with -lhugetlbfs.
+
+There are situations in which it is desirable to restrict
+libhugetlbfs' actions to specific programs.  For example,
+some ISV applications are wrapped in a series of scripts
+that invoke bash, python, and/or perl.	It is more
+convenient to set the environment variables related
+to libhugetlbfs before invoking the wrapper scripts,
+yet this has the unintended and undesirable consequence
+of causing the script interpreters to use and consume
+hugepages.  There is no obvious benefit to causing the
+script interpreters to use hugepages, and there is a
+clear disadvantage: fewer hugepages are available to
+the actual application.
+
+To address this scenario, set HUGETLB_RESTRICT_EXE to a
+colon-separated list of programs to which the other
+libhugetlbfs environment variables should apply.  (If
+not set, libhugetlbfs will attempt to apply the requested
+actions to all programs.)  For example,
+
+    HUGETLB_RESTRICT_EXE=hpcc:long_hpcc
+
+will restrict libhugetlbfs' actions to programs named
+/home/fred/hpcc and /bench/long_hpcc but not /bin/hpcc_no.
+
+
+.TP
 .B HUGETLB_MORECORE_SHRINK=yes
 By default, the hugepage heap does not shrink. Shrinking is enabled by
 setting this environment variable. It is disabled by default as glibc
@@ -117,6 +148,19 @@ succeed on regions mapped MAP_PRIVATE.  Prefaulting impacts the performance
 of malloc() and can result in poor placement on NUMA systems. If it is known
 the hugepage pool is large enough to run the application or the kernel is
 2.6.27 or later, this environment variable should be set.
+
+.TP
+.B HUGETLB_NO_RESERVE=yes
+
+By default, the kernel will reserve huge pages at mmap() time to ensure that
+future faults will succeed. This avoids unexpected application failure at
+fault time but some applications depend on memory overcommit to create
+large sparse mappings. For this type of application, setting this environment
+variable will create huge page backed mappings without a reservation. Use
+this option with extreme care as in the event huge pages are not available
+when the mapping is used, the application will be killed. On older kernels,
+the use of this feature can trigger the OOM killer. Hence, even with this
+variable set, reservations may still be used for safety.
 
 .TP
 .B HUGETLB_MORECORE_HEAPBASE=address

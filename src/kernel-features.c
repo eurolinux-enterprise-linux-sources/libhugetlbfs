@@ -41,6 +41,14 @@ static struct feature kernel_features[] = {
 		.name			= "private_reservations",
 		.required_version	= "2.6.27-rc1",
 	},
+	[HUGETLB_FEATURE_SAFE_NORESERVE] = {
+		.name			= "noreserve_safe",
+		.required_version	= "2.6.34",
+	},
+	[HUGETLB_FEATURE_MAP_HUGETLB] = {
+		.name			= "map_hugetlb",
+		.required_version	= "2.6.32",
+	}
 };
 
 static void debug_kernel_version(void)

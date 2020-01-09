@@ -1,5 +1,5 @@
 Name: libhugetlbfs
-Version: 2.8
+Version: 2.12
 Release: 2%{?dist}
 Summary: A library which provides easy access to huge pages of memory
 
@@ -7,15 +7,12 @@ Group: System Environment/Libraries
 License: LGPLv2+
 URL: http://libhugetlbfs.sourceforge.net/
 Source0: http://downloads.sourceforge.net/libhugetlbfs/%{name}-%{version}.tar.gz
-Patch0: libhugetlbfs-2.6-s390x-build.patch
-Patch1: setup_helper-fix-the-minor-arithmetic-issue.patch
-Patch2: setup_helper-check-for-permission-and-disable-defaul.patch
-Patch3: setup_helper-make-r-w-ops-of-security-limits.d-.conf.patch
+Patch0: libhugetlbfs-2.12-s390x-build.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
-BuildRequires: glibc-headers
+BuildRequires: glibc-devel
+BuildRequires: glibc-static
 Conflicts: kernel < 2.6.16
 Obsoletes: libhugetlbfs-test <= 1.1
-ExcludeArch: s390 s390x
 
 %define ldscriptdir %{_datadir}/%{name}/ldscripts
 
@@ -29,7 +26,7 @@ modifications to load BSS or BSS, data, and text segments into large pages.
 %package devel
 Summary:	Header files for libhugetlbfs
 Group:		Development/Libraries
-Requires:	%{name}%{?_isa} = %{version}-%{release}
+Requires:	%{name} = %{version}-%{release}
 %description devel
 Contains header files for building with libhugetlbfs.
 
@@ -47,13 +44,10 @@ pool size control. pagesize lists page sizes available on the machine.
 %prep
 %setup -q -n %{name}-%{version}
 %patch0 -p1 -b .s390x-build
-%patch1 -p1 -b .math-is-hard
-%patch2 -p1 -b .perms
-%patch3 -p1 -b .limits
 
 %build
 # Parallel builds are not reliable
-make BUILDTYPE=NATIVEONLY
+CFLAGS="%{optflags}" make BUILDTYPE=NATIVEONLY PREFIX=%{_prefix} V=1
 
 %install
 rm -rf $RPM_BUILD_ROOT
@@ -111,32 +105,24 @@ rm -rf $RPM_BUILD_ROOT
 %exclude /usr/lib/perl5/TLBC
 
 %changelog
-* Tue Jul 20 2010 Jarod Wilson <jarod@redhat.com> - 2.8-2
-- Fix arithmetic and permissions issues uncovered by recent
-  testing (Anton Arapov) [471823]
+* Fri Aug 05 2011 Dan Horák <dan[at]danny.cz> - 2.12-2
+- fix build on s390
+- make build verbose, use Fedora CFLAGS
 
-* Tue Jun 15 2010 Anton Arapov <aarapov@redhat.com> - 2.8-1
-- Update for the libhugetlbfs-2.8 release
-- build 32-bit ppc package [603788]
+* Tue Jul 20 2011 Eric B Munson <emunson@mgebm.net>
+ - Update for upstream 2.12 release
 
-* Wed Mar 24 2010 Anton Arapov <aarapov@redhat.com> - 2.7-3
-- fixed linker options [572865]
+* Tue Feb 08 2011 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 2.9-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_15_Mass_Rebuild
 
-* Tue Mar 23 2010 Anton Arapov <aarapov@redhat.com> - 2.7-2
-- disable executable stacks entirely [572865]
+* Mon Apr 05 2010 Eric B Munson <ebmunson@us.ibm.com> 2.8-1
+- Update for upstream 2.8 release
 
-* Tue Mar 16 2010 Anton Arapov <aarapov@redhat.com> - 2.7-1
-- Update for the libhugetlbfs-2.7 release
-- revert: disable executable stacks entirely [572865]
+* Wed Feb 10 2010 Eric B Munson <ebmunson@us.ibm.com> 2.7-2
+- Include patch that fixes build on ppc
 
-* Mon Mar 15 2010 Anton Arapov <aarapov@redhat.com> - 2.6-4
-- disable executable stacks entirely [572865]
-
-* Thu Feb  4 2010 Anton Arapov <aarapov@redhat.com> - 2.6-3.2
-- fix building: sys/stat.h include missed in elflink.c [558908]
-
-* Wed Dec  9 2009 Dennis Gregorovic <dgregor@redhat.com> - 2.6-3.1
-- Don't build on ppc, s390, s390x
+* Tue Jan 05 2010 Eric B Munson <ebmunson@us.ibm.com> 2.7-1
+- Update for upstream 2.7 release
 
 * Fri Oct 02 2009 Jarod Wilson <jarod@redhat.com> 2.6-3
 - Add hopefully-about-to-be-merged-upstream hugeadm enhancements

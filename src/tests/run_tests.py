@@ -554,6 +554,10 @@ def functional_tests():
     do_test("direct")
     do_test("malloc")
     do_test("malloc", LD_PRELOAD="libhugetlbfs.so", HUGETLB_MORECORE="yes")
+    do_test("malloc", LD_PRELOAD="libhugetlbfs.so", HUGETLB_MORECORE="yes",
+            HUGETLB_RESTRICT_EXE="unknown:none")
+    do_test("malloc", LD_PRELOAD="libhugetlbfs.so", HUGETLB_MORECORE="yes",
+            HUGETLB_RESTRICT_EXE="unknown:malloc")
     do_test("malloc_manysmall")
     do_test("malloc_manysmall", LD_PRELOAD="libhugetlbfs.so",
             HUGETLB_MORECORE="yes")
@@ -597,7 +601,11 @@ def functional_tests():
 
     # Test overriding of shmget()
     do_shm_test("shmoverride_linked")
+    do_shm_test("shmoverride_linked", HUGETLB_SHM="yes")
+    do_shm_test("shmoverride_linked_static")
+    do_shm_test("shmoverride_linked_static", HUGETLB_SHM="yes")
     do_shm_test("shmoverride_unlinked", LD_PRELOAD="libhugetlbfs.so")
+    do_shm_test("shmoverride_unlinked", LD_PRELOAD="libhugetlbfs.so", HUGETLB_SHM="yes")
 
     # Test hugetlbfs filesystem quota accounting
     do_test("quota.sh")

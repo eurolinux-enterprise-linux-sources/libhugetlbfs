@@ -33,6 +33,7 @@
 #include <elf.h>
 #include <link.h>
 #include <limits.h>
+#include <stdbool.h>
 
 #ifndef __LIBHUGETLBFS__
 #error This header should not be included by library users.
@@ -56,10 +57,12 @@
 #endif
 
 struct libhugeopts_t {
-	int		min_copy;
 	int		sharing;
-	int		shrink_ok;
-	int		shm_enabled;
+	bool		min_copy;
+	bool		shrink_ok;
+	bool		shm_enabled;
+	bool		no_reserve;
+	bool		map_hugetlb;
 	unsigned long	force_elfmap;
 	char		*ld_preload;
 	char		*elfmap;
@@ -83,9 +86,9 @@ struct libhugeopts_t {
 #define __hugetlbfs_verbose __lh___hugetlbfs_verbose
 extern int __hugetlbfs_verbose;
 #define __hugetlbfs_debug __lh___hugetlbfs_debug
-extern int __hugetlbfs_debug;
+extern bool __hugetlbfs_debug;
 #define __hugetlbfs_prefault __lh___hugetlbfs_prefault
-extern int __hugetlbfs_prefault;
+extern bool __hugetlbfs_prefault;
 #define hugetlbfs_setup_env __lh_hugetlbfs_setup_env
 extern void hugetlbfs_setup_env();
 #define hugetlbfs_setup_elflink __lh_hugetlbfs_setup_elflink
@@ -100,12 +103,22 @@ extern void setup_mounts();
 extern void setup_features();
 #define hugetlbfs_check_priv_resv __lh_hugetlbfs_check_priv_resv
 extern void hugetlbfs_check_priv_resv();
+#define hugetlbfs_check_safe_noreserve __lh_hugetlbfs_check_safe_noreserve
+extern void hugetlbfs_check_safe_noreserve();
+#define hugetlbfs_check_map_hugetlb __lh_hugetblfs_check_map_hugetlb
+extern void hugetlbfs_check_map_hugetlb();
 #define __hugetlbfs_hostname __lh___hugetlbfs_hostname
 extern char __hugetlbfs_hostname[];
 #define hugetlbfs_prefault __lh_hugetlbfs_prefault
-extern int hugetlbfs_prefault(int fd, void *addr, size_t length);
+extern int hugetlbfs_prefault(void *addr, size_t length);
 #define parse_page_size __lh_parse_page_size
 extern long parse_page_size(const char *str);
+#define probe_default_hpage_size __lh__probe_default_hpage_size
+extern void probe_default_hpage_size(void);
+#define debug_show_page_sizes __lh__debug_show_page_sizes
+extern void debug_show_page_sizes(void);
+#define hugetlbfs_setup_kernel_page_size __lh__hugetlbfs_setup_kernel_page_size
+extern void hugetlbfs_setup_kernel_page_size(void);
 #define __hugetlb_opts __lh__hugetlb_opts
 extern struct libhugeopts_t __hugetlb_opts;
 

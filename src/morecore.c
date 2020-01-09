@@ -34,7 +34,6 @@
 #include "libhugetlbfs_internal.h"
 
 static int heap_fd;
-static int zero_fd;
 
 static void *heapbase;
 static void *heaptop;
@@ -72,6 +71,10 @@ static void *hugetlbfs_morecore(ptrdiff_t increment)
 	int ret;
 	void *p;
 	long delta;
+	int mmap_reserve = __hugetlb_opts.no_reserve ? MAP_NORESERVE : 0;
+	int mmap_hugetlb = 0;
+	int using_default_pagesize =
+		(hpage_size == kernel_default_hugepage_size());
 
 	INFO("hugetlbfs_morecore(%ld) = ...\n", (long)increment);
 
@@ -87,14 +90,24 @@ static void *hugetlbfs_morecore(ptrdiff_t increment)
 	/* align to multiple of hugepagesize. */
 	delta = ALIGN(delta, hpage_size);
 
+#ifdef MAP_HUGETLB
+	mmap_hugetlb = MAP_HUGETLB;
+#endif
+
 	if (delta > 0) {
 		/* growing the heap */
 
 		INFO("Attempting to map %ld bytes\n", delta);
 
 		/* map in (extend) more of the file at the end of our last map */
-		p = mmap(heapbase + mapsize, delta, PROT_READ|PROT_WRITE,
-			 MAP_PRIVATE, heap_fd, mapsize);
+		if (__hugetlb_opts.map_hugetlb && using_default_pagesize)
+			p = mmap(heapbase + mapsize, delta, PROT_READ|PROT_WRITE,
+				 mmap_hugetlb|MAP_ANONYMOUS|MAP_PRIVATE|mmap_reserve,
+				 heap_fd, mapsize);
+		else
+			p = mmap(heapbase + mapsize, delta, PROT_READ|PROT_WRITE,
+				 MAP_PRIVATE|mmap_reserve, heap_fd, mapsize);
+
 		if (p == MAP_FAILED) {
 			WARNING("New heap segment map at %p failed: %s\n",
 				heapbase+mapsize, strerror(errno));
@@ -122,7 +135,7 @@ static void *hugetlbfs_morecore(ptrdiff_t increment)
 		}
 
 		/* Fault the region to ensure accesses succeed */
-		if (hugetlbfs_prefault(zero_fd, p, delta) != 0) {
+		if (hugetlbfs_prefault(p, delta) != 0) {
 			munmap(p, delta);
 			return NULL;
 		}
@@ -165,7 +178,7 @@ static void *hugetlbfs_morecore(ptrdiff_t increment)
 		if (ret) {
 			WARNING("Unmapping failed while shrinking heap: "
 				"%s\n", strerror(errno));
-		} else {
+		} else if (!__hugetlb_opts.map_hugetlb && !using_default_pagesize){
 
 			/*
 			 * Now shrink the hugetlbfs file.
@@ -215,32 +228,29 @@ void hugetlbfs_setup_morecore(void)
 	if (hpage_size <= 0) {
 		if (errno == ENOSYS)
 			WARNING("Hugepages unavailable\n");
-		else if (errno == EOVERFLOW)
+		else if (errno == EOVERFLOW || errno == ERANGE)
 			WARNING("Hugepage size too large\n");
 		else if (errno == EINVAL)
 			WARNING("Invalid huge page size\n");
 		else
 			WARNING("Hugepage size (%s)\n", strerror(errno));
 		return;
-	} else if (!hugetlbfs_find_path_for_size(hpage_size)) {
-		WARNING("Hugepage size %li unavailable", hpage_size);
-		return;
 	}
 
-	if (hpage_size <= 0) {
-		if (errno == ENOSYS)
-			WARNING("Hugepages unavailable\n");
-		else if (errno == EOVERFLOW || errno == ERANGE)
-			WARNING("Hugepage size too large\n");
-		else
-			WARNING("Hugepage size (%s)\n", strerror(errno));
-		return;
-	}
+	if(__hugetlb_opts.map_hugetlb &&
+			hpage_size == kernel_default_hugepage_size()) {
+		heap_fd = -1;
+	} else {
+		if (!hugetlbfs_find_path_for_size(hpage_size)) {
+			WARNING("Hugepage size %li unavailable", hpage_size);
+			return;
+		}
 
-	heap_fd = hugetlbfs_unlinked_fd_for_size(hpage_size);
-	if (heap_fd < 0) {
-		WARNING("Couldn't open hugetlbfs file for morecore\n");
-		return;
+		heap_fd = hugetlbfs_unlinked_fd_for_size(hpage_size);
+		if (heap_fd < 0) {
+			WARNING("Couldn't open hugetlbfs file for morecore\n");
+			return;
+		}
 	}
 
 	if (__hugetlb_opts.heapbase) {
@@ -254,7 +264,6 @@ void hugetlbfs_setup_morecore(void)
 		heapaddr = (unsigned long)sbrk(0);
 		heapaddr = hugetlbfs_next_addr(heapaddr);
 	}
-	zero_fd = open("/dev/zero", O_RDONLY);
 
 	INFO("setup_morecore(): heapaddr = 0x%lx\n", heapaddr);
 

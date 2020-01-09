@@ -55,7 +55,7 @@ sub _setup_oprofile()
 	my $self = shift;
 	my $vmlinux = shift;
 	my $refEvents = shift;
-	my $cmd = "$Bin/oprofile_start.sh --vmlinux=$vmlinux ";
+	my $cmd = "$Bin/oprofile_start.sh --sample-cycle-factor 6 --sample-event-factor 2 --vmlinux=$vmlinux ";
 	foreach my $event (@{$refEvents}) {
 		$cmd .= " --event=$event";
 		$self->_get_event($event);
@@ -154,7 +154,10 @@ sub get_current_eventcount()
 	$col = $self->_get_column($event);
 
 	foreach $line (@results) {
-		if ($line =~ /$binName/) {
+		if ($line !~ /^\s+[0-9]/) {
+			next;
+		}
+		if ($binName eq "/" || $line =~ /$binName/) {
 			chomp($line);
 			$line =~ s/^\s+//;
 			$line =~ s/\s+$//;
@@ -169,7 +172,7 @@ sub get_current_eventcount()
 sub read_eventcount()
 {
 	system("opcontrol --dump > /dev/null 2>&1");
-	$report = `opreport`;
+	$report = `opreport -x 2> /dev/null`;
 }
 
 sub shutdown()

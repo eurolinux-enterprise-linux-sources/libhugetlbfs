@@ -10,7 +10,12 @@
 #
 import os
 
-debug = True
+debug = False
+
+# must be executed under the root to operate
+if os.geteuid() != 0:
+    print "You must be root to setup hugepages!"
+    os._exit(1)
 
 # config files we need access to
 sysctlConf = "/etc/sysctl.conf"
@@ -95,13 +100,13 @@ while not userIn:
     try:
         userIn = raw_input("How much memory would you like to allocate for huge pages? "
                            "(input in MB, unless postfixed with GB): ")
-	if userIn[-2:] == "GB":
+        if userIn[-2:] == "GB":
             userHugePageReqMB = int(userIn[0:-2]) * 1024
-	elif userIn[-1:] == "G":
+        elif userIn[-1:] == "G":
             userHugePageReqMB = int(userIn[0:-1]) * 1024
-	elif userIn[-2:] == "MB":
+        elif userIn[-2:] == "MB":
             userHugePageReqMB = int(userIn[0:-2])
-	elif userIn[-1:] == "M":
+        elif userIn[-1:] == "M":
             userHugePageReqMB = int(userIn[0:-1])
         else:
             userHugePageReqMB = int(userIn)
@@ -109,7 +114,7 @@ while not userIn:
         if userHugePageReqMB > (memTotal - 128):
             userIn = None
             print "Refusing to allocate %d, you must leave at least 128MB for the system" % userHugePageReqMB
-        elif userHugePageReqMB < (hugePageSize / 1024):
+        elif userHugePageReqMB < (hugePageSize / (1024 * 1024)):
             userIn = None
             print "Sorry, allocation must be at least a page's worth!"
         else:
@@ -129,8 +134,10 @@ inputIsValid = False
 # ask for the name of the group allowed access to huge pages
 while inputIsValid == False:
     foundbad = False
-    userGroupReq = raw_input("What group should have access to the huge pages? "
-                             "(The group will be created, if need be): ")
+    userGroupReq = raw_input("What group should have access to the huge pages?"
+                             "(The group will be created, if need be) [hugepages]: ")
+    if userGroupReq is '':
+        userGroupReq = 'hugepages'
     if userGroupReq[0].isdigit() or userGroupReq[0] == "-":
         foundbad = True
         print "Group names cannot start with a number or dash, please try again!"
@@ -159,7 +166,7 @@ if userGIDReq > -1:
     print "Group %s (gid %d) already exists, we'll use it" % (userGroupReq, userGIDReq)
 else:
     if debug == False:
-    	os.popen("/usr/sbin/groupadd %s" % userGroupReq)
+        os.popen("/usr/sbin/groupadd %s" % userGroupReq)
     else:
         print "/usr/sbin/groupadd %s" % userGroupReq
     groupNames = os.popen("/usr/bin/getent group %s" % userGroupReq).readlines()
@@ -215,7 +222,10 @@ for hugeUser in hugePageUserList:
     if userExists == False:
         print "Creating user %s with membership in huge page group" % hugeUser
         if debug == False:
-            os.popen("/usr/sbin/useradd %s -G %s" % (hugeUser, userGroupReq))
+            if hugeUser == userGroupReq:
+                os.popen("/usr/sbin/useradd %s -g %s" % (hugeUser, userGroupReq))
+            else:
+                os.popen("/usr/sbin/useradd %s -G %s" % (hugeUser, userGroupReq))
         else:
             print "/usr/sbin/useradd %s -G %s" % (hugeUser, userGroupReq)
 print
@@ -291,8 +301,13 @@ if debug == False:
     for line in limitsConfLines:
         cfgExist = False
         for hugeUser in hugePageUserList:
-            if line.split()[0] == hugeUser:
-                cfgExist = True
+            try:
+                if line.split()[0] == hugeUser:
+                    cfgExist = True
+            except IndexError:
+                # hit either white or comment line, it is safe not to take
+                # any action and continue.
+                pass
         if cfgExist == True:
             continue
         else:
@@ -325,5 +340,4 @@ print " * Total size of Huge Pages.: %6d MB" % (userHugePagesReq * hugePageSize 
 print " * Remaining System Memory..: %6d MB" % (memTotal - userHugePageReqMB)
 print " * Huge Page User Group.....:  %s (%d)" % (userGroupReq, userGIDReq)
 print
-
 
