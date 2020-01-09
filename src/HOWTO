@@ -2,7 +2,7 @@ libhugetlbfs HOWTO
 ==================
 
 Author: David Gibson <dwg@au1.ibm.com>, Adam Litke <agl@us.ibm.com>, and others
-Last updated: February 1st, 2011
+Last updated: December 07, 2011
 
 Introduction
 ============
@@ -43,13 +43,14 @@ Hardware prerequisites
 ----------------------
 
 You will need a CPU with some sort of hugepage support, which is
-handled by your kernel.  The covers recent x86, AMD64 and 64-bit
-PowerPC(R) (POWER4, PPC970 and later) CPUs.
+handled by your kernel.  This covers recent x86, AMD64, 64-bit
+PowerPC(R) (POWER4, PPC970 and later), and IBM System z CPUs.
 
 Currently, only x86, AMD64 and PowerPC are fully supported by
 libhugetlbfs. IA64 and Sparc64 have a working malloc, and SH64
 should also but it has not been tested. IA64, Sparc64, and SH64
-do not support segment remapping at this time.
+do not support segment remapping at this time. IBM System z supports
+malloc and also segment remapping with --hugetlbfs-align.
 
 Kernel prerequisites
 --------------------
@@ -264,6 +265,11 @@ environment variables:
   To use a specific huge page size:
        HUGETLB_MORECORE=<pagesize>
 
+  To use Transparent Huge Pages (THP):
+       HUGETLB_MORECORE=thp
+
+Note: This option requires a kernel that supports Transparent Huge Pages
+
 Usually it's preferable to set these environment variables on the
 command line of the program you wish to run, rather than using
 "export", because you'll only want to enable the hugepage malloc() for
@@ -284,9 +290,9 @@ it yet, the following would work for a 64-bit program:
 Under some circumstances, you might want to specify the address where
 the hugepage heap is located.  You can do this by setting the
 HUGETLB_MORECORE_HEAPBASE environment variable to the heap address in
-hexadecimal.  (NOTE: this will not work on PowerPC systems with old kernels
+hexadecimal.  NOTE: this will not work on PowerPC systems with old kernels
 which don't respect the hugepage hint address; see Kernel Prerequisites
-above).
+above.  Also note that this option is ignored for THP morecore.
 
 By default, the hugepage heap begins at roughly the same place a
 normal page heap would, rounded up by an amount determined by your

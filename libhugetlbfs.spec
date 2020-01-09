@@ -1,5 +1,5 @@
 Name: libhugetlbfs
-Version: 2.12
+Version: 2.16
 Release: 2%{?dist}
 Summary: A library which provides easy access to huge pages of memory
 
@@ -7,7 +7,8 @@ Group: System Environment/Libraries
 License: LGPLv2+
 URL: http://libhugetlbfs.sourceforge.net/
 Source0: http://downloads.sourceforge.net/libhugetlbfs/%{name}-%{version}.tar.gz
-Patch0: libhugetlbfs-2.12-s390x-build.patch
+Patch0: libhugetlbfs-2.16-s390x-build.patch
+Patch1: libhugetlbfs-2.16-s390x-multilib.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: glibc-devel
 BuildRequires: glibc-static
@@ -44,6 +45,7 @@ pool size control. pagesize lists page sizes available on the machine.
 %prep
 %setup -q -n %{name}-%{version}
 %patch0 -p1 -b .s390x-build
+%patch1 -p1 -b .s390x-multilib
 
 %build
 # Parallel builds are not reliable
@@ -86,6 +88,12 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man3/gethugepagesizes.3.gz
 %{_mandir}/man3/free_hugepage_region.3.gz
 %{_mandir}/man3/get_hugepage_region.3.gz
+%{_mandir}/man3/gethugepagesize.3.gz
+%{_mandir}/man3/hugetlbfs_find_path.3.gz
+%{_mandir}/man3/hugetlbfs_find_path_for_size.3.gz
+%{_mandir}/man3/hugetlbfs_test_path.3.gz
+%{_mandir}/man3/hugetlbfs_unlinked_fd.3.gz
+%{_mandir}/man3/hugetlbfs_unlinked_fd_for_size.3.gz
 
 %files utils
 %defattr(-,root,root,-)
@@ -101,10 +109,17 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man8/hugectl.8.gz
 %{_mandir}/man8/hugeadm.8.gz
 %{_mandir}/man1/pagesize.1.gz
+%{_mandir}/man1/ld.hugetlbfs.1.gz
 %exclude %{_mandir}/man8/cpupcstat.8.gz
 %exclude /usr/lib/perl5/TLBC
 
 %changelog
+* Tue Jul 15 2014 Petr Holasek <pholasek@redhat.com> - 2.16-2
+- Fixed s390/x custom ldscript support regression (bz1119659)
+
+* Thu May 22 2014 Petr Holasek <pholasek@redhat.com> - 2.16-1
+- Rebase to version 2.16
+
 * Fri Aug 05 2011 Dan Horák <dan[at]danny.cz> - 2.12-2
 - fix build on s390
 - make build verbose, use Fedora CFLAGS

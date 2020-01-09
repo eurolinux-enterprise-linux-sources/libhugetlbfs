@@ -335,6 +335,15 @@ void hugetlbfs_setup_env()
 	__hugetlb_opts.morecore = getenv("HUGETLB_MORECORE");
 	__hugetlb_opts.heapbase = getenv("HUGETLB_MORECORE_HEAPBASE");
 
+	if (__hugetlb_opts.morecore)
+		__hugetlb_opts.thp_morecore =
+			(strcasecmp(__hugetlb_opts.morecore, "thp") == 0);
+
+	if (__hugetlb_opts.thp_morecore && __hugetlb_opts.heapbase) {
+		DEBUG("Heapbase specified with THP for morecore, ignoring heapbase\n");
+		__hugetlb_opts.heapbase = NULL;
+	}
+
 	env = getenv("HUGETLB_FORCE_ELFMAP");
 	if (env && (strcasecmp(env, "yes") == 0))
 		__hugetlb_opts.force_elfmap = 1;
@@ -371,12 +380,12 @@ void hugetlbfs_setup_env()
 
 	/* Determine if shmget() calls should be overridden */
 	env = getenv("HUGETLB_SHM");
-	if (env && !strcmp(env, "yes"))
+	if (env && !strcasecmp(env, "yes"))
 		__hugetlb_opts.shm_enabled = true;
 
 	/* Determine if all reservations should be avoided */
 	env = getenv("HUGETLB_NO_RESERVE");
-	if (env && !strcmp(env, "yes"))
+	if (env && !strcasecmp(env, "yes"))
 		__hugetlb_opts.no_reserve = true;
 }
 
@@ -614,7 +623,9 @@ static void find_mounts(void)
 	char path[PATH_MAX+1];
 	char line[LINE_MAXLEN + 1];
 	char *eol;
-	int bytes, err, dummy;
+	char *match;
+	char *end;
+	int bytes;
 	off_t offset;
 
 	fd = open("/proc/mounts", O_RDONLY);
@@ -643,17 +654,22 @@ static void find_mounts(void)
 		offset = bytes - (eol + 1 - line);
 		lseek(fd, -offset, SEEK_CUR);
 
-		/*
-		 * Match only hugetlbfs filesystems.
-		 * Subtle: sscanf returns the number of input items matched
-		 * and assigned.  To force sscanf to match the literal
-		 * "hugetlbfs" string we include a 'dummy' input item
-		 * following that string.
-		 */
-		err = sscanf(line, "%*s %" stringify(PATH_MAX) "s hugetlbfs "
-			"%*s %d", path, &dummy);
-		if ((err == 2) && (hugetlbfs_test_path(path) == 1))
-			add_hugetlbfs_mount(path, 0);
+		/* Match only hugetlbfs filesystems. */
+		match = strstr(line, " hugetlbfs ");
+		if (match) {
+			match = strchr(line, '/');
+			if (!match)
+				continue;
+			end = strchr(match, ' ');
+			if (!end)
+				continue;
+
+			strncpy(path, match, end - match);
+			path[end - match] = '\0';
+			if ((hugetlbfs_test_path(path) == 1) &&
+			    !(access(path, R_OK | W_OK | X_OK)))
+				add_hugetlbfs_mount(path, 0);
+		}
 	}
 	close(fd);
 }

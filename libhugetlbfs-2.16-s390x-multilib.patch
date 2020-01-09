@@ -1,0 +1,11 @@
+diff -up libhugetlbfs-2.16/Makefile.orig libhugetlbfs-2.16/Makefile
+--- libhugetlbfs-2.16/Makefile.orig	2014-07-14 17:44:04.829286469 +0200
++++ libhugetlbfs-2.16/Makefile	2014-07-14 17:48:03.529736928 +0200
+@@ -97,6 +97,7 @@ ifeq ($(ARCH),s390)
+ CC32 = gcc -m31
+ TMPLIB32 = lib
+ CFLAGS += -DNO_ELFLINK
++CUSTOM_LDSCRIPTS = no
+ else
+ $(error "Unrecognized architecture ($(ARCH))")
+ endif

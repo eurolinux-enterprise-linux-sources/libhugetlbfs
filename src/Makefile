@@ -11,9 +11,10 @@ INSTALL_SCRIPT = cpupcstat oprofile_map_events.pl oprofile_start.sh
 INSTALL_HELPER = huge_page_setup_helper.py
 INSTALL_PERLMOD = DataCollect.pm OpCollect.pm PerfCollect.pm Report.pm
 INSTALL_HEADERS = hugetlbfs.h
-INSTALL_MAN1 = pagesize.1
-INSTALL_MAN3 = get_huge_pages.3 get_hugepage_region.3 \
-		gethugepagesizes.3 getpagesizes.3
+INSTALL_MAN1 = ld.hugetlbfs.1 pagesize.1
+INSTALL_MAN3 = get_huge_pages.3 get_hugepage_region.3 gethugepagesize.3 \
+		gethugepagesizes.3 getpagesizes.3 hugetlbfs_find_path.3 \
+		hugetlbfs_test_path.3 hugetlbfs_unlinked_fd.3
 INSTALL_MAN7 = libhugetlbfs.7
 INSTALL_MAN8 = hugectl.8 hugeedit.8 hugeadm.8 cpupcstat.8
 LDSCRIPT_TYPES = B BDT
@@ -33,6 +34,8 @@ CPPFLAGS += -D__LIBHUGETLBFS__
 
 ARCH = $(shell uname -m | sed -e s/i.86/i386/)
 
+CUSTOM_LDSCRIPTS = yes
+
 ifeq ($(ARCH),ppc64)
 CC64 = gcc -m64
 ELF64 = elf64ppc
@@ -47,6 +50,12 @@ ifeq ($(ARCH),ppc)
 CC32 = gcc -m32
 ELF32 = elf32ppclinux
 TMPLIB32 = lib
+else
+ifeq ($(ARCH),armv7l)
+CC32 = gcc
+TMPLIB32 = lib
+ELF32 += armelf_linux_eabi
+CUSTOM_LDSCRIPTS = no
 else
 ifeq ($(ARCH),i386)
 CC32 = gcc
@@ -76,11 +85,14 @@ else
 ifeq ($(ARCH),s390x)
 CC64 = gcc -m64
 CC32 = gcc -m31
+ELF32 = elf_s390
+ELF64 = elf64_s390
 TMPLIB64 = lib64
 TMPLIB32 = lib
-CFLAGS += -DNO_ELFLINK
+CUSTOM_LDSCRIPTS = no
 else
 $(error "Unrecognized architecture ($(ARCH))")
+endif
 endif
 endif
 endif
@@ -125,6 +137,10 @@ ifdef TMPLIB64
 ifeq ($(LIB64),)
 LIB64 = $(TMPLIB64)
 endif
+endif
+
+ifeq ($(CUSTOM_LDSCRIPTS),yes)
+TEST_LDSCRIPTS = -l
 endif
 
 # If TMPLIB64 is set, then sure we are not resolving LIB32 and LIB64 to the
@@ -186,6 +202,7 @@ export ELF32
 export ELF64
 export LIBDIR32
 export LIBDIR64
+export CUSTOM_LDSCRIPTS
 
 all:	libs tests tools
 
@@ -196,22 +213,22 @@ libs:	$(foreach file,$(INSTALL_OBJ_LIBS),$(OBJDIRS:%=%/$(file))) $(BIN_OBJ_DIR)/
 tests:	libs # Force make to build the library first
 tests:	tests/all
 
-tests/%:
+tests/%: libs
 	$(MAKE) -C tests $*
 
 tools:  $(foreach file,$(INSTALL_BIN),$(BIN_OBJ_DIR)/$(file))
 
 check:	all
-	cd tests; ./run_tests.py
+	cd tests; ./run_tests.py $(TEST_LDSCRIPTS)
 
 checkv:	all
-	cd tests; ./run_tests.py -vV
+	cd tests; ./run_tests.py -vV $(TEST_LDSCRIPTS)
 
 func:	all
-	cd tests; ./run_tests.py -t func
+	cd tests; ./run_tests.py -t func $(TEST_LDSCRIPTS)
 
 funcv:	all
-	cd tests; ./run_tests.py -t func -vV
+	cd tests; ./run_tests.py -t func -vV $(TEST_LDSCRIPTS)
 
 stress:	all
 	cd tests; ./run_tests.py -t stress
@@ -364,7 +381,7 @@ obj64/install:
 
 objscript.%: %
 	@$(VECHO) OBJSCRIPT $*
-	sed "s!### SET DEFAULT LDSCRIPT PATH HERE ###!HUGETLB_LDSCRIPT_PATH=$(LDSCRIPTDIR)!" < $< > $@
+	sed "s!### SET DEFAULT LDSCRIPT PATH HERE ###!HUGETLB_LDSCRIPT_PATH=$(LDSCRIPTDIR)!;s!### SET CUSTOM_LDSCRIPTS HERE ###!CUSTOM_LDSCRIPTS=\"$(CUSTOM_LDSCRIPTS)\"!" < $< > $@
 
 install-libs: libs $(OBJDIRS:%=%/install) $(INSTALL_OBJSCRIPT:%=objscript.%)
 	$(INSTALL) -d $(DESTDIR)$(HEADERDIR)
@@ -392,8 +409,12 @@ install-man:
 	done
 	rm -f $(DESTDIR)$(MANDIR3)/free_huge_pages.3.gz
 	rm -f $(DESTDIR)$(MANDIR3)/free_hugepage_region.3.gz
+	rm -f $(DESTDIR)$(MANDIR3)/hugetlbfs_unlinked_fd_for_size.3.gz
+	rm -f $(DESTDIR)$(MANDIR3)/hugetlbfs_find_path_for_size.3.gz
 	ln -s get_huge_pages.3.gz $(DESTDIR)$(MANDIR3)/free_huge_pages.3.gz
 	ln -s get_hugepage_region.3.gz $(DESTDIR)$(MANDIR3)/free_hugepage_region.3.gz
+	ln -s hugetlbfs_unlinked_fd.3.gz $(DESTDIR)$(MANDIR3)/hugetlbfs_unlinked_fd_for_size.3.gz
+	ln -s hugetlbfs_find_path.3.gz $(DESTDIR)$(MANDIR3)/hugetlbfs_find_path_for_size.3.gz
 	for x in $(INSTALL_MAN7); do \
 		$(INSTALL) -m 444 man/$$x $(DESTDIR)$(MANDIR7); \
 		gzip -f $(DESTDIR)$(MANDIR7)/$$x; \
