@@ -1,6 +1,6 @@
 Name: libhugetlbfs
 Version: 2.16
-Release: 2%{?dist}
+Release: 7%{?dist}
 Summary: A library which provides easy access to huge pages of memory
 Group: System Environment/Libraries
 License: LGPLv2+
@@ -8,6 +8,9 @@ URL: http://libhugetlbfs.sourceforge.net/
 Source0: http://downloads.sourceforge.net/libhugetlbfs/%{name}-%{version}.tar.gz
 Patch0: libhugetlbfs-2.16-s390.patch
 Patch1: libhugetlbfs-2.15-fortify.patch
+Patch2: libhugetlbfs-2.16-misalign_test.patch
+Patch3: libhugetlbfs-2.17-aarch64.patch
+Patch4: libhugetlbfs-2.16-makefile_cflags.patch
 BuildRequires: glibc-devel
 BuildRequires: glibc-static
 
@@ -42,6 +45,9 @@ pool size control. pagesize lists page sizes available on the machine.
 %setup -q -n %{name}-%{version}
 %patch0 -p1 -b .s390
 %patch1 -p1 -b .fortify
+%patch2 -p1 -b .misalign_test
+%patch3 -p1 -b .aarch64
+%patch4 -p1 -b .makefile_cflags
 
 %build
 # Parallel builds are not reliable
@@ -103,6 +109,21 @@ rm -fr $RPM_BUILD_ROOT/%{_sbindir}/
 %exclude /usr/lib/perl5/TLBC
 
 %changelog
+* Mon Mar 03 2014 Petr Holasek <pholasek@redhat.com> - 2.16-7
+- Compiling with -fstack-protector-strong flag (#1070772)
+
+* Wed Feb 12 2014 Petr Holasek <pholasek@redhat.com> - 2.16-6
+- Backport patches from 2.17 for AArch64 support.
+
+* Tue Feb 11 2014 Petr Holasek <pholasek@redhat.com> - 2.16-5
+- Fix of misalign test (#1034549)
+
+* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 2.16-4
+- Mass rebuild 2014-01-24
+
+* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 2.16-3
+- Mass rebuild 2013-12-27
+
 * Sun May 12 2013 Anton Arapov <anton@redhat.com> - 2.16-2
 - Fortify code
 - Fix s390 build issues (#960107)

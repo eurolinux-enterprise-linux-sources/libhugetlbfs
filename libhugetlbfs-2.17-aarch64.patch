@@ -1,0 +1,157 @@
+diff --git a/Makefile b/Makefile
+index 48205af..0e61701 100644
+--- a/Makefile
++++ b/Makefile
+@@ -57,6 +57,12 @@ TMPLIB32 = lib
+ ELF32 += armelf_linux_eabi
+ CUSTOM_LDSCRIPTS = no
+ else
++ifeq ($(ARCH),aarch64)
++CC64 = gcc
++ELF64 = aarch64elf
++TMPLIB64 = lib64
++CUSTOM_LDSCRIPTS = no
++else
+ ifeq ($(ARCH),i386)
+ CC32 = gcc
+ ELF32 = elf_i386
+@@ -100,6 +106,7 @@ endif
+ endif
+ endif
+ endif
++endif
+ 
+ ifdef CC32
+ OBJDIRS += obj32
+diff --git a/ld.hugetlbfs b/ld.hugetlbfs
+index d6d12c4..ba9e00a 100755
+--- a/ld.hugetlbfs
++++ b/ld.hugetlbfs
+@@ -79,11 +79,6 @@ if [ -n "$HTLB_LINK" ]; then
+     HTLB_ALIGN="" # --hugetlbfs-link overrides --hugetlbfs-align
+     LDSCRIPT="$EMU.x$HTLB_LINK"
+     HTLBOPTS="-T${HUGETLB_LDSCRIPT_PATH}/${LDSCRIPT}"
+-
+-    if [ "$EMU" == "armelf_linux_eabi" ]; then
+-        echo "Please use --hugetlbfs-align when targeting ARM."
+-	exit -1
+-    fi
+ fi
+ 
+ MB=$((1024*1024))
+@@ -91,7 +86,7 @@ case "$EMU" in
+ elf32ppclinux|elf64ppc)	HPAGE_SIZE=$((16*$MB)) SLICE_SIZE=$((256*$MB)) ;;
+ elf_i386|elf_x86_64)	HPAGE_SIZE=$((4*$MB)) SLICE_SIZE=$HPAGE_SIZE ;;
+ elf_s390|elf64_s390)	HPAGE_SIZE=$((1*$MB)) SLICE_SIZE=$HPAGE_SIZE ;;
+-armelf_linux_eabi)	HPAGE_SIZE=$((2*$MB)) SLICE_SIZE=$HPAGE_SIZE ;;
++armelf_linux_eabi|aarch64elf)	HPAGE_SIZE=$((2*MB)) SLICE_SIZE=$HPAGE_SIZE ;;
+ esac
+ 
+ if [ "$HTLB_ALIGN" == "slice" ]; then
+diff --git a/sys-aarch64elf.S b/sys-aarch64elf.S
+new file mode 100644
+index 0000000..54799d3
+--- /dev/null
++++ b/sys-aarch64elf.S
+@@ -0,0 +1,34 @@
++/*
++ * libhugetlbfs - Easy use of Linux hugepages
++ * Copyright (C) 2013 Linaro Ltd.
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public License
++ * version 2.1 as published by the Free Software Foundation.
++ *
++ * This library is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++        .text
++
++        .globl  direct_syscall
++
++
++direct_syscall:
++	uxtw	x8, w0
++	mov	x0, x1
++	mov	x1, x2
++	mov	x2, x3
++	mov	x3, x4
++	mov	x4, x5
++	mov	x5, x6
++	mov	x6, x7
++	svc	0x0
++	ret
+diff --git a/tests/Makefile b/tests/Makefile
+index 231e3b0..9140e72 100644
+--- a/tests/Makefile
++++ b/tests/Makefile
+@@ -54,7 +54,7 @@ ifeq ($(CUSTOM_LDSCRIPTS),yes)
+ TESTS += $(LDSCRIPT_TESTS) $(HUGELINK_TESTS) $(HUGELINK_TESTS:%=xB.%) \
+ 	$(HUGELINK_TESTS:%=xBDT.%)
+ else
+-TESTS += $(LDSCRIPT_TESTS) $(HUGELINK_TESTS)
++TESTS += $(LDSCRIPT_TESTS) $(HUGELINK_TESTS) $(HUGELINK_RW_TESTS)
+ endif
+ 
+ endif
+diff --git a/tests/icache-hygiene.c b/tests/icache-hygiene.c
+index 51792b3..876ce10 100644
+--- a/tests/icache-hygiene.c
++++ b/tests/icache-hygiene.c
+@@ -54,7 +54,7 @@ static void cacheflush(void *p)
+ {
+ #if defined(__powerpc__)
+ 	asm volatile("dcbst 0,%0; sync; icbi 0,%0; isync" : : "r"(p));
+-#elif defined(__arm__)
++#elif defined(__arm__) || defined(__aarch64__)
+ 	__clear_cache(p, p + COPY_SIZE);
+ #endif
+ }
+@@ -87,8 +87,9 @@ static void *sig_expected;
+ static void sig_handler(int signum, siginfo_t *si, void *uc)
+ {
+ #if defined(__powerpc__) || defined(__powerpc64__) || defined(__ia64__) || \
+-    defined(__s390__) || defined(__s390x__) || defined(__sparc__)
+-	/* On powerpc and ia64 and s390, 0 bytes are an illegal
++    defined(__s390__) || defined(__s390x__) || defined(__sparc__) || \
++    defined(__aarch64__)
++	/* On powerpc, ia64, s390 and Aarch64, 0 bytes are an illegal
+ 	 * instruction, so, if the icache is cleared properly, we SIGILL
+ 	 * as soon as we jump into the cleared page */
+ 	if (signum == SIGILL) {
+diff --git a/tests/mprotect.c b/tests/mprotect.c
+index aa4673e..db6a662 100644
+--- a/tests/mprotect.c
++++ b/tests/mprotect.c
+@@ -213,5 +213,11 @@ int main(int argc, char *argv[])
+ 	test_mprotect(fd, "RW->R 1/2", 2*hpage_size, PROT_READ|PROT_WRITE,
+ 		      hpage_size, PROT_READ);
+ 
++	/* PROT_NONE tests */
++	test_mprotect(fd, "NONE->R", hpage_size, PROT_NONE,
++		      hpage_size, PROT_READ);
++	test_mprotect(fd, "NONE->RW", hpage_size, PROT_NONE,
++		      hpage_size, PROT_READ|PROT_WRITE);
++
+ 	PASS();
+ }
+diff --git a/tests/mremap-expand-slice-collision.c b/tests/mremap-expand-slice-collision.c
+index c25f4c6..853f3c3 100644
+--- a/tests/mremap-expand-slice-collision.c
++++ b/tests/mremap-expand-slice-collision.c
+@@ -38,7 +38,7 @@ void init_slice_boundary(int fd)
+ 	unsigned long slice_size;
+ 	void *p1, *p2, *heap;
+ 	int slices_ok, i, rc;
+-#ifdef __LP64__
++#if defined(__LP64__) && !defined(__aarch64__)
+ 	/* powerpc: 1TB slices starting at 1 TB */
+ 	slice_boundary = 0x10000000000;
+ 	slice_size = 0x10000000000;
