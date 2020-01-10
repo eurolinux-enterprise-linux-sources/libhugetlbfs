@@ -1,0 +1,96 @@
+commit fd430caf7126228cd7e208547ae83b335400e040
+Author: Jan Stancek <jstancek@redhat.com>
+Date:   Mon Feb 10 21:18:05 2014 -0500
+
+    [PATCH] misalign: misaligned length allowed on kernels >= 3.10-rc1
+    
+    Startin with 3.10-rc1, length passed in mmap() doesn't need
+    to be aligned because commit af73e4d9506d3b797509f3c030e7dcd554f7d9c4
+    added ALIGN() to kernel side, in mmap_pgoff(), when mapping huge
+    page files.
+    
+    This patch treats successful mmap() with misaligned length on
+    kernels >= 3.10 as PASS.
+    
+    See also:
+    Bug 56881 - MAP_HUGETLB mmap fails for certain sizes
+    https://bugzilla.kernel.org/show_bug.cgi?id=56881
+    
+    Signed-off-by: Jan Stancek <jstancek@redhat.com>
+    Signed-off-by: Eric Munson <emunson@mgebm.net>
+
+diff --git a/tests/misalign.c b/tests/misalign.c
+index de85be6..de1bf98 100644
+--- a/tests/misalign.c
++++ b/tests/misalign.c
+@@ -23,6 +23,7 @@
+ #include <errno.h>
+ #include <signal.h>
+ #include <sys/mman.h>
++#include <sys/utsname.h>
+ 
+ #include <hugetlbfs.h>
+ 
+@@ -40,6 +41,11 @@
+  * necessary checks for the hugepage paths.  This testcase ensures
+  * that attempted hugepage mappings with parameters which are not
+  * correctly hugepage aligned are rejected.
++ *
++ * However starting with 3.10-rc1, length passed in mmap() doesn't need
++ * to be aligned because commit af73e4d9506d3b797509f3c030e7dcd554f7d9c4
++ * added ALIGN() to kernel side, in mmap_pgoff(), when mapping huge page
++ * files.
+  */
+ int main(int argc, char *argv[])
+ {
+@@ -47,9 +53,13 @@ int main(int argc, char *argv[])
+ 	int fd;
+ 	void *p, *q;
+ 	int err;
++	struct utsname buf;
+ 
+ 	test_init(argc, argv);
+ 
++	if (uname(&buf) != 0)
++		FAIL("uname failed %s", strerror(errno));
++
+ 	page_size = getpagesize();
+ 	hpage_size = check_hugepagesize();
+ 
+@@ -92,16 +102,30 @@ int main(int argc, char *argv[])
+ 
+ 	/* 3) Try a misaligned length */
+ 	q = mmap(NULL, page_size, PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0);
+-	if (q != MAP_FAILED)
+-		FAIL("mmap() with misaligned length 0x%lx succeeded",
+-		     page_size);
++
++	if (test_compare_kver(buf.release, "3.10.0") < 0) {
++		if (q != MAP_FAILED)
++			FAIL("mmap() with misaligned length 0x%lx succeeded",
++				page_size);
++	} else {
++		if (q == MAP_FAILED)
++			FAIL("mmap() with misaligned length 0x%lx failed",
++				page_size);
++	}
+ 
+ 	/* 4) Try a misaligned length with MAP_FIXED */
+ 	q = mmap(p, page_size, PROT_READ|PROT_WRITE,
+ 		 MAP_PRIVATE|MAP_FIXED, fd, 0);
+-	if (q != MAP_FAILED)
+-		FAIL("mmap() MAP_FIXED with misaligned length 0x%lx succeeded",
+-		     page_size);
++
++	if (test_compare_kver(buf.release, "3.10.0") < 0) {
++		if (q != MAP_FAILED)
++			FAIL("mmap() MAP_FIXED with misaligned length 0x%lx "
++				"succeeded", page_size);
++	} else {
++		if (q == MAP_FAILED)
++			FAIL("mmap() MAP_FIXED with misaligned length 0x%lx "
++				"failed", page_size);
++	}
+ 
+ 	/* 5) Try a misaligned offset */
+ 	q = mmap(NULL, hpage_size, PROT_READ|PROT_WRITE,

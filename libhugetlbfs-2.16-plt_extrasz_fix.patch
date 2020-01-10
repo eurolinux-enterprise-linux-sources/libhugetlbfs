@@ -1,0 +1,13 @@
+diff -up libhugetlbfs-2.16/Makefile.orig libhugetlbfs-2.16/Makefile
+--- libhugetlbfs-2.16/Makefile.orig	2014-11-06 23:06:07.605004158 +0100
++++ libhugetlbfs-2.16/Makefile	2014-11-06 23:07:07.354883338 +0100
+@@ -150,6 +150,9 @@ endif
+ ifeq ($(ELF64),elf64ppc)
+ LIBOBJS64 += obj64/$(ELF64).o
+ endif
++ifeq ($(ELF64),elf64lppc)
++LIBOBJS64 += obj64/$(ELF64).o
++endif
+ LIBOBJS32 += $(LIBOBJS:%=obj32/%)
+ LIBOBJS64 += $(LIBOBJS:%=obj64/%)
+ 

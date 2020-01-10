@@ -1,0 +1,11 @@
+diff -up libhugetlbfs-2.16/Makefile.orig libhugetlbfs-2.16/Makefile
+--- libhugetlbfs-2.16/Makefile.orig	2014-07-29 17:25:28.126626119 +0200
++++ libhugetlbfs-2.16/Makefile	2014-07-29 17:25:47.249662564 +0200
+@@ -50,6 +50,7 @@ ifeq ($(ARCH),ppc)
+ CC32 = gcc -m32
+ ELF32 = elf32ppclinux
+ TMPLIB32 = lib
++CPPFLAGS += -DPPC_NO_SEGMENTS
+ else
+ ifeq ($(ARCH),armv7l)
+ CC32 = gcc

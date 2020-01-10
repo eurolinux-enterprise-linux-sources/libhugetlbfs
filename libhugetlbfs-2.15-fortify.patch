@@ -1,0 +1,12 @@
+diff -up libhugetlbfs-2.15/Makefile.fortify libhugetlbfs-2.15/Makefile
+--- libhugetlbfs-2.15/Makefile.fortify	2012-12-12 11:33:54.725402249 +0100
++++ libhugetlbfs-2.15/Makefile	2012-12-12 11:34:24.130531531 +0100
+@@ -30,7 +30,7 @@ INSTALL = install
+ LDFLAGS += -Wl,-z,noexecstack -ldl
+ CFLAGS ?= -O2 -g
+ CFLAGS += -Wall -fPIC
+-CPPFLAGS += -D__LIBHUGETLBFS__
++CPPFLAGS += -D__LIBHUGETLBFS__ -DFORTIFY_SOURCE
+ 
+ ARCH = $(shell uname -m | sed -e s/i.86/i386/)
+ 
