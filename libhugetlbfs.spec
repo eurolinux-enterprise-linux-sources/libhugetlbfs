@@ -1,6 +1,6 @@
 Name: libhugetlbfs
 Version: 2.16
-Release: 13%{?dist}
+Release: 2%{?dist}
 Summary: A library which provides easy access to huge pages of memory
 Group: System Environment/Libraries
 License: LGPLv2+
@@ -8,21 +8,6 @@ URL: http://libhugetlbfs.sourceforge.net/
 Source0: http://downloads.sourceforge.net/libhugetlbfs/%{name}-%{version}.tar.gz
 Patch0: libhugetlbfs-2.16-s390.patch
 Patch1: libhugetlbfs-2.15-fortify.patch
-Patch2: libhugetlbfs-2.16-misalign_test.patch
-Patch3: libhugetlbfs-2.17-aarch64.patch
-Patch4: libhugetlbfs-2.16-makefile_cflags.patch
-Patch5: libhugetlbfs-2.16-makefile_segments.patch
-Patch6: libhugetlbfs-2.16-mounts_warning.patch
-Patch7: libhugetlbfs-2.16-ppc64le-support.patch
-Patch8: libhugetlbfs-2.16-plt_extrasz_fix.patch
-Patch9: libhugetlbfs-2.16-map_high_truncate.patch
-Patch10:libhugetlbfs-2.20-tests-linkhuge_rw-function-ptr-may-not-refer-to-text.patch
-Patch11:libhugetlbfs-2.20-do-not-assume-default-huge-page-size-is-first.patch
-Patch12:libhugetlbfs-2.20-defined-task-size-value-to-be-512T-if-it-is-more-than-64Tb.patch
-# downstream patches for bz#1422960
-Patch13: 0001-testutils-fix-range_is_mapped.patch
-Patch14: 0002-stack_grow_into_huge-don-t-clobber-existing-mappings.patch
-
 BuildRequires: glibc-devel
 BuildRequires: glibc-static
 
@@ -57,23 +42,8 @@ pool size control. pagesize lists page sizes available on the machine.
 %setup -q -n %{name}-%{version}
 %patch0 -p1 -b .s390
 %patch1 -p1 -b .fortify
-%patch2 -p1 -b .misalign_test
-%patch3 -p1 -b .aarch64
-%patch4 -p1 -b .makefile_cflags
-%patch5 -p1 -b .makefile_segments
-%patch6 -p1 -b .mounts_warning
-%patch7 -p1 -b .ppc64le_support
-%patch8 -p1 -b .plt_extrasz_fix
-%patch9 -p1 -b .map_high_truncate
-%patch10 -p1 -b .linkhuge_rw-func
-%patch11 -p1 -b .default-huge-page
-%patch12 -p1 -b .defined-task-size
-%patch13 -p1 -b .bz1422960.patch-1
-%patch14 -p1 -b .bz1422960.patch-2
 
 %build
-ln -s sys-elf64ppc.S sys-elf64lppc.S
-ln -s elf64ppc.c elf64lppc.c
 # Parallel builds are not reliable
 make BUILDTYPE=NATIVEONLY
 
@@ -133,42 +103,6 @@ rm -fr $RPM_BUILD_ROOT/%{_sbindir}/
 %exclude /usr/lib/perl5/TLBC
 
 %changelog
-* Thu Aug 02 2018 Rafael Aquini <aquini@redhat.com> - 2.16-13
-- tests/stack_grow_into libhugetlbfs test fixes (#1422960)
-- PPC vm/hugepage/libhugetlbfs test fix (#1515365)
-
-* Tue Jun 07 2016 Petr holasek <pholasek@redhat.com> - 2.16-12
-- linkhuge_rw test fix (#1240568)
-- hugeadm fix for firestone ppc systems (#1258622)
-
-* Mon Dec 15 2014 Petr Holasek <pholasek@redhat.com> - 2.16-11
-- map_high_truncate_2 test fix (#1161677)
-
-* Thu Nov 06 2014 Petr Holasek <pholasek@redhat.com> - 2.16-10
-- fix plt_extrasz() always returning 0 on ppc64le (#1160217)
-
-* Wed Aug 13 2014 Petr Holasek <pholasek@redhat.com> - 2.16-9
-- ppc64le support (#1125576)
-
-* Tue Jul 29 2014 Petr Holasek <pholasek@redhat.com> - 2.16-8
-- Fixed malloc failures in testsuite
-- Fixed warning when /etc/mtab is symlink
-
-* Mon Mar 03 2014 Petr Holasek <pholasek@redhat.com> - 2.16-7
-- Compiling with -fstack-protector-strong flag (#1070772)
-
-* Wed Feb 12 2014 Petr Holasek <pholasek@redhat.com> - 2.16-6
-- Backport patches from 2.17 for AArch64 support.
-
-* Tue Feb 11 2014 Petr Holasek <pholasek@redhat.com> - 2.16-5
-- Fix of misalign test (#1034549)
-
-* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 2.16-4
-- Mass rebuild 2014-01-24
-
-* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 2.16-3
-- Mass rebuild 2013-12-27
-
 * Sun May 12 2013 Anton Arapov <anton@redhat.com> - 2.16-2
 - Fortify code
 - Fix s390 build issues (#960107)
