@@ -1,6 +1,6 @@
 Name: libhugetlbfs
 Version: 2.16
-Release: 11%{?dist}
+Release: 12%{?dist}
 Summary: A library which provides easy access to huge pages of memory
 Group: System Environment/Libraries
 License: LGPLv2+
@@ -16,6 +16,9 @@ Patch6: libhugetlbfs-2.16-mounts_warning.patch
 Patch7: libhugetlbfs-2.16-ppc64le-support.patch
 Patch8: libhugetlbfs-2.16-plt_extrasz_fix.patch
 Patch9: libhugetlbfs-2.16-map_high_truncate.patch
+Patch10:libhugetlbfs-2.20-tests-linkhuge_rw-function-ptr-may-not-refer-to-text.patch
+Patch11:libhugetlbfs-2.20-do-not-assume-default-huge-page-size-is-first.patch
+
 BuildRequires: glibc-devel
 BuildRequires: glibc-static
 
@@ -58,6 +61,8 @@ pool size control. pagesize lists page sizes available on the machine.
 %patch7 -p1 -b .ppc64le_support
 %patch8 -p1 -b .plt_extrasz_fix
 %patch9 -p1 -b .map_high_truncate
+%patch10 -p1 -b .linkhuge_rw-func
+%patch11 -p1 -b .default-huge-page
 
 %build
 ln -s sys-elf64ppc.S sys-elf64lppc.S
@@ -121,6 +126,10 @@ rm -fr $RPM_BUILD_ROOT/%{_sbindir}/
 %exclude /usr/lib/perl5/TLBC
 
 %changelog
+* Tue Jun 07 2016 Petr holasek <pholasek@redhat.com> - 2.16-12
+- linkhuge_rw test fix (#1240568)
+- hugeadm fix for firestone ppc systems (#1258622)
+
 * Mon Dec 15 2014 Petr Holasek <pholasek@redhat.com> - 2.16-11
 - map_high_truncate_2 test fix (#1161677)
 
