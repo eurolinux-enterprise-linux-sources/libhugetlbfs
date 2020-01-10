@@ -1,0 +1,28 @@
+commit 02df38e93e25e07f4d54edae94fb4ec90b7a2824
+Author: Santhosh G <santhog4@linux.vnet.ibm.com>
+Date:   Thu Jul 27 13:10:37 2017 +0530
+
+    Defined task size value to be 512T if it is more that 64Tb.
+    
+    The Test case needs to loop till 512Tb to get the TASK_SIZE value.
+    This patch defines the value to be 512T if the test tries to loop
+    above 64T.
+    
+    Signed-off-by: Santhosh G <santhog4@linux.vnet.ibm.com>
+    Signed-off-by: Eric B Munson <emunson@mgebm.net>
+
+diff --git a/tests/task-size-overrun.c b/tests/task-size-overrun.c
+index 0ab76c7..dc9ce0e 100644
+--- a/tests/task-size-overrun.c
++++ b/tests/task-size-overrun.c
+@@ -82,6 +82,10 @@ static unsigned long find_task_size(void)
+ 		}
+ 		munmap(p, getpagesize());
+ 		addr += getpagesize();
++#if defined(__powerpc64__)
++		if (addr > (1UL << 46) && addr < (1UL << 49))
++			addr = 1UL << 49;
++#endif
+ #if defined(__s390x__)
+ 		if (addr > (1UL << 42) && addr < (1UL << 53))
+ 			addr = 1UL << 53;

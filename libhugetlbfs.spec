@@ -1,6 +1,6 @@
 Name: libhugetlbfs
 Version: 2.16
-Release: 12%{?dist}
+Release: 13%{?dist}
 Summary: A library which provides easy access to huge pages of memory
 Group: System Environment/Libraries
 License: LGPLv2+
@@ -18,6 +18,10 @@ Patch8: libhugetlbfs-2.16-plt_extrasz_fix.patch
 Patch9: libhugetlbfs-2.16-map_high_truncate.patch
 Patch10:libhugetlbfs-2.20-tests-linkhuge_rw-function-ptr-may-not-refer-to-text.patch
 Patch11:libhugetlbfs-2.20-do-not-assume-default-huge-page-size-is-first.patch
+Patch12:libhugetlbfs-2.20-defined-task-size-value-to-be-512T-if-it-is-more-than-64Tb.patch
+# downstream patches for bz#1422960
+Patch13: 0001-testutils-fix-range_is_mapped.patch
+Patch14: 0002-stack_grow_into_huge-don-t-clobber-existing-mappings.patch
 
 BuildRequires: glibc-devel
 BuildRequires: glibc-static
@@ -63,6 +67,9 @@ pool size control. pagesize lists page sizes available on the machine.
 %patch9 -p1 -b .map_high_truncate
 %patch10 -p1 -b .linkhuge_rw-func
 %patch11 -p1 -b .default-huge-page
+%patch12 -p1 -b .defined-task-size
+%patch13 -p1 -b .bz1422960.patch-1
+%patch14 -p1 -b .bz1422960.patch-2
 
 %build
 ln -s sys-elf64ppc.S sys-elf64lppc.S
@@ -126,6 +133,10 @@ rm -fr $RPM_BUILD_ROOT/%{_sbindir}/
 %exclude /usr/lib/perl5/TLBC
 
 %changelog
+* Thu Aug 02 2018 Rafael Aquini <aquini@redhat.com> - 2.16-13
+- tests/stack_grow_into libhugetlbfs test fixes (#1422960)
+- PPC vm/hugepage/libhugetlbfs test fix (#1515365)
+
 * Tue Jun 07 2016 Petr holasek <pholasek@redhat.com> - 2.16-12
 - linkhuge_rw test fix (#1240568)
 - hugeadm fix for firestone ppc systems (#1258622)
